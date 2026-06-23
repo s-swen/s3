@@ -3,8 +3,8 @@ from pydantic import BaseModel
 
 class StartUploadPayload(BaseModel):
     file_name: str
-    content_type: str
     file_size: int
+    content_type: str
 
 
 class StartUploadResponse(BaseModel):

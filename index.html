@@ -4,38 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Uploader</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <input type="file" id="upload-input" multiple="false" />
+    <input type="file" id="upload-input" />
     <hr />
     <script>
-      const uploadInput = document.getElementById("upload-input");
-      uploadInput.onchange = async (event) => {
-        const file = event.target.files[0];
-        if (file) {
-          const details = await initializeUpload(
-            file.name,
-            file.size,
-            file.type,
-          );
-          console.log("details: ", details);
-          const etags = await uploadToS3(
-            file,
-            details.key,
-            details.chunk_size,
-            details.urls,
-            details.fields,
-          );
-          const url = await completeUpload(
-            details.key,
-            details.upload_id,
-            etags,
-          );
-          if (url) {
-            handleSuccess(url, file.type.includes("image"));
-          }
-        }
-      };
       const initializeUpload = async (fileName, fileSize, contentType) => {
         try {
           const response = await fetch("/start-upload", {
@@ -50,16 +24,16 @@
             }),
           });
           if (!response.ok) {
-            throw new Error("Failed to start upload!");
+            throw new Error("initiatize upload failed");
           }
           const result = await response.json();
+          console.log(result);
           return result;
         } catch (error) {
           console.log("Error", error);
-          alert("error!");
         }
       };
-      const splitFileIntoChunks = (file, chunkSize) => {
+      const split = (file, chunkSize) => {
         const chunks = [];
         let start = 0;
         while (start < file.size) {
@@ -69,34 +43,26 @@
         }
         return chunks;
       };
-      const uploadChunk = async (url, chunk, contentType) => {
-        try {
-          const response = await fetch(url, {
-            method: "PUT",
-            body: chunk,
-          });
-          if (!response.ok) {
-            throw new Error("Network response was not OK.");
-          }
-          return response.headers.get("ETag");
-        } catch (error) {
-          console.log("Error", error);
-          throw error;
-        }
-      };
+
       const uploadToS3 = async (file, key, chunkSize, urls, fields) => {
         const etags = [];
-        const chunks = splitFileIntoChunks(file, chunkSize);
+        const chunks = split(file, chunkSize);
         for (let i = 0; i < chunks.length; i++) {
           try {
-            const etag = await uploadChunk(urls[i], chunks[i], file.type);
+            const response = await fetch(urls[i], {
+              method: "PUT",
+              body: chunks[i],
+            });
+            if (!response.ok) {
+              throw new Error("Upload failed chunk");
+            }
+            const etag = response.headers.get("ETag");
             console.log(
-              `Chunk ${i + 1} of ${chunks.length} uploaded successfully`,
+              `Chunk ${i + 1} of ${chunks.length} uploaded, etag is ${etag}`,
             );
-            console.log("Etag is: ", etag);
             etags.push(etag);
           } catch (error) {
-            console.log("Error", error);
+            console.log(`Error uploading chunk ${i}`);
           }
         }
         return etags;
@@ -115,16 +81,16 @@
             }),
           });
           if (!response.ok) {
-            throw new Error("Network response was not OK.");
+            throw new Error("Error complete upload");
           }
           const result = await response.json();
           return result["url"];
         } catch (error) {
-          console.log("Failed to upload:", error);
+          console.log("Error complete upload", error);
         }
       };
       const handleSuccess = (url, isImage) => {
-        console.log("Success:", url);
+        console.log("Success", url);
         const section = document.createElement("section");
         if (isImage) {
           const img = document.createElement("img");
@@ -141,6 +107,33 @@
         section.appendChild(link);
         document.body.appendChild(section);
         document.body.appendChild(document.createElement("hr"));
+      };
+
+      const uploadInput = document.getElementById("upload-input");
+      uploadInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const details = await initializeUpload(
+            file.name,
+            file.size,
+            file.type,
+          );
+          const etags = await uploadToS3(
+            file,
+            details.key,
+            details.chunk_size,
+            details.urls,
+            details.fields,
+          );
+          const url = await completeUpload(
+            details.key,
+            details.upload_id,
+            etags,
+          );
+          if (url) {
+            handleSuccess(url, file.type.includes("image"));
+          }
+        }
       };
     </script>
   </body>
